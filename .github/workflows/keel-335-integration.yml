@@ -1,0 +1,71 @@
+name: KEEL kivaloo 335 local integration
+
+on:
+  push:
+    branches:
+      - review/keel-335-cleaner-validation-20260906
+    paths:
+      - .github/workflows/keel-335-integration.yml
+
+permissions: {}
+
+jobs:
+  local-kvlds-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: [base, head]
+    steps:
+      - name: Fetch and build exact source without installing
+        shell: bash
+        env:
+          STAGE: ${{ matrix.stage }}
+        run: |
+          set -euo pipefail
+          case "$STAGE" in
+            base) ref=3de151b5d878b0714552c3658562eb5a87b378ce ;;
+            head) ref=8507e3201015af50d978a834ac70cebbaba751ab ;;
+            *) exit 64 ;;
+          esac
+          git init target
+          git -C target remote add origin https://github.com/woahwhattheheck/kivaloo.git
+          git -C target fetch --depth=1 origin "$ref"
+          git -C target checkout --detach FETCH_HEAD
+          test "$(git -C target rev-parse HEAD)" = "$ref"
+          git -C target submodule update --init --recursive
+          test "$(git -C target rev-parse HEAD:tests/kvlds/test_kvlds.sh)" = 96ef1ae663143c524886d8e43103fddca9111019
+          gcc --version | head -n 1
+          if ! make -C target -j2 > build.log 2>&1; then
+            tail -n 160 build.log
+            exit 1
+          fi
+          echo "BUILD $STAGE PASS $ref"
+      - name: Run only the upstream local KVLDS integration script
+        shell: bash
+        env:
+          STAGE: ${{ matrix.stage }}
+        run: |
+          set -euo pipefail
+          scratch=$(mktemp -d /tmp/keel335-integration.XXXXXXXX)
+          export KIVALOO_TESTDIR="$scratch/store"
+          case "$KIVALOO_TESTDIR" in
+            /tmp/keel335-integration.*/store) ;;
+            *) exit 64 ;;
+          esac
+          # The upstream script removes its own STOR directory, starts local
+          # test daemons on Unix sockets inside it, and terminates those PIDs.
+          # Do not invoke the root test target: it includes cloud backends.
+          status=0
+          timeout --signal=TERM --kill-after=5s 240s make -C target/tests/kvlds test > integration.log 2>&1 || status=$?
+          cat integration.log
+          printf '\nINTEGRATION_STAGE=%s EXIT_STATUS=%s\n' "$STAGE" "$status"
+          test "$status" -eq 0
+          if grep -Fq 'FAILED!' integration.log; then
+            exit 1
+          fi
+          passed=$(grep -c 'PASSED!' integration.log || true)
+          printf 'PASSED_LABELS=%s\n' "$passed"
+          test "$passed" -ge 13
+          printf '## Kivaloo 335 local integration: %s\n\n%s upstream PASSED labels; bounded local Unix-socket tests only.\n\nS3/DynamoDB were not run. Upstream FreeBSD-only ktrace leak tests are skipped on this Linux runner.\n' "$STAGE" "$passed" >> "$GITHUB_STEP_SUMMARY"
