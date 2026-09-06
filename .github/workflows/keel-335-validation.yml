@@ -1,0 +1,67 @@
+name: KEEL kivaloo 335 cleaner validation
+
+on:
+  push:
+    branches:
+      - review/keel-335-cleaner-validation-20260906
+    paths:
+      - .github/workflows/keel-335-validation.yml
+      - tests/keel-335/**
+
+permissions: {}
+
+jobs:
+  build-and-callback-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Fetch exact validation and base/head source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init validation
+          git -C validation remote add origin https://github.com/woahwhattheheck/kivaloo.git
+          git -C validation fetch --depth=1 origin "$GITHUB_SHA"
+          git -C validation checkout --detach FETCH_HEAD
+          test "$(git -C validation rev-parse HEAD)" = "$GITHUB_SHA"
+          for stage in base head; do
+            if [ "$stage" = base ]; then
+              ref=3de151b5d878b0714552c3658562eb5a87b378ce
+            else
+              ref=8507e3201015af50d978a834ac70cebbaba751ab
+            fi
+            git init "$stage"
+            git -C "$stage" remote add origin https://github.com/woahwhattheheck/kivaloo.git
+            git -C "$stage" fetch --depth=1 origin "$ref"
+            git -C "$stage" checkout --detach FETCH_HEAD
+            test "$(git -C "$stage" rev-parse HEAD)" = "$ref"
+            git -C "$stage" submodule update --init --recursive
+          done
+      - name: Normal full build of both exact source revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc --version | head -n 1
+          make --version | head -n 1
+          for stage in base head; do
+            printf 'SOURCE %s ' "$stage"
+            git -C "$stage" rev-parse HEAD:kvlds/btree_cleaning.c
+            if ! make -C "$stage" -j2 > "$stage-build.log" 2>&1; then
+              tail -n 160 "$stage-build.log"
+              exit 1
+            fi
+            test -x "$stage/kvlds/kvlds"
+            echo "BUILD $stage PASS"
+            tail -n 8 "$stage-build.log"
+          done
+      - name: Real pool and exact callback lifecycle regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          python3 validation/tests/keel-335/run.py "$PWD/base" "$PWD/head" || status=$?
+          cat validation/tests/keel-335/results.json
+          if [ "$status" != 0 ]; then
+            exit "$status"
+          fi
+          printf '## KEEL kivaloo 335\n\nBoth exact source revisions built normally. All 44 expected callback outcomes matched.\n\nThis is isolated exact-source callback testing with the real pool, not a running daemon, persistence test, or scheduler-race certification.\n' >> "$GITHUB_STEP_SUMMARY"
