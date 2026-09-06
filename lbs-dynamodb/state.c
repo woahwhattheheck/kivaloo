@@ -225,8 +225,10 @@ callback_get(void * cookie, int status, const uint8_t * buf, size_t buflen)
 	 */
 	if ((status == 2) && (C->consistent == 0)) {
 		C->consistent = 1;
-		return (proto_dynamodb_kv_request_getc(S->Q,
-		    objmap(R->r.get.blkno), callback_get, C));
+		if (proto_dynamodb_kv_request_getc(S->Q,
+		    objmap(R->r.get.blkno), callback_get, C))
+			goto err0;
+		return (0);
 	}
 
 	/* If we got data, verify the block size. */
@@ -259,6 +261,12 @@ callback_get(void * cookie, int status, const uint8_t * buf, size_t buflen)
 	return (rc);
 
 err0:
+	/* We aren't going to perform a callback after all. */
+	S->npending -= 1;
+
+	/* Free our cookie. */
+	free(C);
+
 	/* Failure! */
 	return (-1);
 }
@@ -298,6 +306,7 @@ state_append(struct state * S, struct proto_lbs_request * R,
 	return (0);
 
 err1:
+	S->nextblk = C->nextblk_old;
 	free(C);
 err0:
 	/* Failure! */
