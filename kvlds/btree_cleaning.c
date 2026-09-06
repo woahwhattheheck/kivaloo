@@ -161,6 +161,8 @@ done:
 	return (0);
 
 err1:
+	/* We aren't going to clean this node after all. */
+	CG->C->pending_cleans--;
 	btree_node_unlock(CG->C->T, N);
 
 	/* Failure! */
