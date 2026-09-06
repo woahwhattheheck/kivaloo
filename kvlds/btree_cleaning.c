@@ -157,6 +157,15 @@ callback_clean(void * cookie, struct node * N)
 	N->v.cstate = C;
 
 done:
+	/*
+	 * If we abandoned this node and it was the last one the group was
+	 * waiting for, nothing is left to free the group: free_cg() is
+	 * only otherwise reached from free_cstate(), which runs for nodes
+	 * which acquired a struct cleaning.
+	 */
+	if ((CG->head == NULL) && (CG->pending_fetches == 0))
+		free_cg(CG);
+
 	/* Success! */
 	return (0);
 
@@ -164,6 +173,10 @@ err1:
 	/* We aren't going to clean this node after all. */
 	CG->C->pending_cleans--;
 	btree_node_unlock(CG->C->T, N);
+
+	/* Free the group if this was the last node it was waiting for. */
+	if ((CG->head == NULL) && (CG->pending_fetches == 0))
+		free_cg(CG);
 
 	/* Failure! */
 	return (-1);
