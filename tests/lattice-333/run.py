@@ -115,7 +115,7 @@ def main():
                 binary=build/('lattice-'+kind)
                 must([*flags,'-DLATTICE_SOURCE="'+str(build/source)+'"',
                       '-DLATTICE_LBS='+str(int(kind=='lbs')),str(dp),
-                      '-Wl,--gc-sections','-Wl,--wrap=close','-Wl,--wrap=free','-Wl,--wrap=warnp',
+                      '-Wl,--gc-sections','-Wl,--wrap=close','-Wl,--wrap=free','-Wl,--wrap=libcperciva_warn','-Wl,--wrap=libcperciva_warnx',
                       '-o',str(binary)], revision+'-compile-'+kind,build)
                 binaries[kind]=binary
             for site,kind,idx in (('lbs-done-write','lbs',1),('lbs-done-read','lbs',0),
@@ -130,7 +130,7 @@ def main():
             if len(archives)!=1: raise RuntimeError('Expected one liball archive, got '+repr(archives))
             binary=build/'lattice-directory'
             must([*flags,'-DLATTICE_SOURCE="'+str(build/SOURCES[3])+'"',str(qp),
-                  '-Wl,--gc-sections','-Wl,--wrap=closedir','-Wl,--wrap=warnp',str(archives[0]),
+                  '-Wl,--gc-sections','-Wl,--wrap=closedir','-Wl,--wrap=libcperciva_warn','-Wl,--wrap=libcperciva_warnx',str(archives[0]),
                   '-lpthread','-lm','-lssl','-lcrypto','-o',str(binary)],revision+'-compile-directory',build)
             fixture=build/'lattice-fixture'; fixture.mkdir()
             (fixture/'blks_0000000000000000').write_bytes(b'public generated fixture')

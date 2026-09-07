@@ -9,7 +9,9 @@
 static int mode, calls, warnings, dir_fd = -1;
 static DIR * seen;
 int __real_closedir(DIR *);
-void __wrap_warnp(const char * fmt, ...) { (void)fmt; warnings++; }
+/* warnp() expands to these two actual linker symbols. */
+void __wrap_libcperciva_warn(const char * fmt, ...) { (void)fmt; warnings++; }
+void __wrap_libcperciva_warnx(const char * fmt, ...) { (void)fmt; warnings++; }
 int __wrap_closedir(DIR * d) {
     calls++;
     if (seen == d) {

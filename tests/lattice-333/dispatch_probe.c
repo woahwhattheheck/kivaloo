@@ -73,7 +73,9 @@ int __wrap_close(int fd) {
     return __real_close(fd);
 }
 
-void __wrap_warnp(const char * fmt, ...) { (void)fmt; warnings++; }
+/* warnp() expands to these two actual linker symbols. */
+void __wrap_libcperciva_warn(const char * fmt, ...) { (void)fmt; warnings++; }
+void __wrap_libcperciva_warnx(const char * fmt, ...) { (void)fmt; warnings++; }
 void netbuf_read_free(struct netbuf_read * p) { (void)p; read_frees++; }
 void netbuf_write_free(struct netbuf_write * p) { (void)p; write_frees++; }
 #if LATTICE_LBS
