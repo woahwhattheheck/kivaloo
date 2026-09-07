@@ -1,0 +1,62 @@
+name: MICA PR319 disk close validation
+on:
+  push:
+    branches: [review/mica-319-disk-close-20260906]
+    paths:
+      - tests/mica-319/**
+      - .github/workflows/mica-319-validation.yml
+  workflow_dispatch:
+permissions: {}
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Fetch exact public revisions without repository credentials
+        shell: bash
+        env:
+          REVIEW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin https://github.com/woahwhattheheck/kivaloo.git
+          git fetch --no-tags --depth=1 origin "$REVIEW_SHA"
+          git checkout --detach FETCH_HEAD
+          git fetch --no-tags --depth=1 origin 3de151b5d878b0714552c3658562eb5a87b378ce 44b96da661657acce648dfa22dd396b307c516f0
+          mkdir -p sources results/harness
+          git worktree add --detach sources/base 3de151b5d878b0714552c3658562eb5a87b378ce
+          git worktree add --detach sources/head 44b96da661657acce648dfa22dd396b307c516f0
+          cp tests/mica-319/* results/harness/
+          python3 -m py_compile tests/mica-319/run.py
+      - name: Install build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq > results/install.log 2>&1
+          sudo apt-get install -y -qq libssl-dev >> results/install.log 2>&1
+      - name: Build both full trees and actual disk objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          { uname -a; gcc --version; make --version; openssl version; } > results/toolchain.txt
+          for rev in base head; do
+            (
+              set -euo pipefail
+              cd "sources/$rev"
+              git rev-parse HEAD HEAD:lbs/disk.c
+              make -j2 CC=gcc CFLAGS='-O2 -g'
+              git diff --exit-code
+            ) > "results/build-$rev.log" 2>&1 || { tail -60 "results/build-$rev.log"; exit 1; }
+          done
+      - name: Compare release-and-reuse versus retained-descriptor close contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/mica-319/run.py sources results | tee results/replay.log
+      - name: Preserve complete evidence including any failing expectations
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mica-319-disk-close-validation
+          path: results/
+          retention-days: 14
