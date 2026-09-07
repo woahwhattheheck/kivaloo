@@ -1,0 +1,62 @@
+name: MICA PR321 storage read lifetime validation
+on:
+  push:
+    branches: [review/mica-321-read-lifetime-20260906]
+    paths:
+      - tests/mica-321/**
+      - .github/workflows/mica-321-validation.yml
+  workflow_dispatch:
+permissions: {}
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Fetch exact public revisions without repository credentials
+        shell: bash
+        env:
+          REVIEW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin https://github.com/woahwhattheheck/kivaloo.git
+          git fetch --no-tags --depth=1 origin "$REVIEW_SHA"
+          git checkout --detach FETCH_HEAD
+          git fetch --no-tags --depth=1 origin 3de151b5d878b0714552c3658562eb5a87b378ce fa4d96f81dfbea69a9a47a52b706ec7a4d38ee87
+          mkdir -p sources results/harness
+          git worktree add --detach sources/base 3de151b5d878b0714552c3658562eb5a87b378ce
+          git worktree add --detach sources/head fa4d96f81dfbea69a9a47a52b706ec7a4d38ee87
+          cp tests/mica-321/* results/harness/
+          python3 -m py_compile tests/mica-321/run.py
+      - name: Install build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq > results/install.log 2>&1
+          sudo apt-get install -y -qq libssl-dev >> results/install.log 2>&1
+      - name: Build complete trees with ASan and UBSan
+        shell: bash
+        run: |
+          set -euo pipefail
+          { uname -a; gcc --version; make --version; openssl version; } > results/toolchain.txt
+          for rev in base head; do
+            (
+              set -euo pipefail
+              cd "sources/$rev"
+              git rev-parse HEAD HEAD:lbs/storage.c
+              make -j2 CC=gcc CFLAGS='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
+              git diff --exit-code
+            ) > "results/build-$rev.log" 2>&1 || { tail -60 "results/build-$rev.log"; exit 1; }
+          done
+      - name: Replay actual reader and writer/deleter interleavings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/mica-321/run.py sources results | tee results/replay.log
+      - name: Preserve all results including expected original sanitizer reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mica-321-storage-read-validation
+          path: results/
+          retention-days: 14
