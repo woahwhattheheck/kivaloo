@@ -1,0 +1,53 @@
+name: RIVET kivaloo 331 real daemon recovery
+on:
+  push:
+    branches: [review/rivet-331-lbs-reconnect-20260906]
+    paths:
+      - .github/workflows/rivet-331-validation.yml
+permissions: {}
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BASE: 3de151b5d878b0714552c3658562eb5a87b378ce
+      HEAD: 690f3805fc4dc3e97234478f6eb1aed9d3d163e5
+    steps:
+      - name: Fetch pinned public code and isolated driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q source
+          git -C source remote add origin https://github.com/woahwhattheheck/kivaloo.git
+          git -C source fetch --no-tags --depth=1 origin "$GITHUB_SHA" "$BASE" "$HEAD"
+          git -C source checkout -q --detach "$GITHUB_SHA"
+          test "$(git -C source hash-object tests/rivet-331/run.py)" = "7b36597d5075d058c92e24773c3e2f31f72984f8"
+          git -C source worktree add --detach "$RUNNER_TEMP/rivet-331-base" "$BASE"
+          git -C source worktree add --detach "$RUNNER_TEMP/rivet-331-head" "$HEAD"
+          mkdir -p evidence/build
+          printf 'validation=%s\nbase=%s\nhead=%s\n' "$GITHUB_SHA" "$BASE" "$HEAD" | tee evidence/revisions.txt
+      - name: Build both exact lbs applications
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq > evidence/build/apt-update.log 2>&1 || { tail -60 evidence/build/apt-update.log; exit 1; }
+          sudo apt-get install -y -qq build-essential libssl-dev > evidence/build/apt-install.log 2>&1 || { tail -60 evidence/build/apt-install.log; exit 1; }
+          { uname -a; cc --version; make --version; python3 --version; } > evidence/environment.txt
+          for version in base head; do
+            make -C "$RUNNER_TEMP/rivet-331-$version/lbs" -j2 > "evidence/build/$version-make.log" 2>&1 || { tail -100 "evidence/build/$version-make.log"; exit 1; }
+            test -x "$RUNNER_TEMP/rivet-331-$version/lbs/lbs"
+            printf 'BUILD PASS: %s\n' "$version"
+          done
+      - name: Exercise real Unix socket rejection and reconnect behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 source/tests/rivet-331/run.py --base "$RUNNER_TEMP/rivet-331-base" --head "$RUNNER_TEMP/rivet-331-head" --output evidence/protocol --timeout 2 | tee evidence/protocol-console.log
+      - name: Retain protocol and build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rivet-331-real-daemon-validation
+          path: evidence/
+          retention-days: 14
+          if-no-files-found: error
