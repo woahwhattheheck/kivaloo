@@ -1,0 +1,41 @@
+name: kestrel-sigma-329-validation
+on:
+  push:
+    branches: ['review/kestrel-sigma-329-rollback-20260906']
+    paths:
+      - 'tests/kestrel-sigma-329/**'
+      - '.github/workflows/kestrel-sigma-329-validation.yml'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GIT_TERMINAL_PROMPT: '0'
+    steps:
+      - name: Fetch exact public replay source without repository credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init replay
+          git -C replay fetch --depth=1 https://github.com/woahwhattheheck/kivaloo.git "$GITHUB_SHA"
+          git -C replay checkout --detach FETCH_HEAD
+          test "$(git -C replay rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Build both pinned revisions and assert rollback observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 replay/tests/kestrel-sigma-329/run.py "$RUNNER_TEMP/kestrel-sigma-329"
+      - name: Preserve logs even when an expectation fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kestrel-sigma-329-evidence
+          path: |
+            ${{ runner.temp }}/kestrel-sigma-329/logs/
+            ${{ runner.temp }}/kestrel-sigma-329/results.json
+            ${{ runner.temp }}/kestrel-sigma-329/environment.txt
+            ${{ runner.temp }}/kestrel-sigma-329/log-sha256.json
+          retention-days: 15
+          if-no-files-found: error
