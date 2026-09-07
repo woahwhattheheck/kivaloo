@@ -1,0 +1,34 @@
+name: Lattice kivaloo 333 cleanup validation
+on:
+  push:
+    branches:
+      - review/lattice-333-cleanup-validation-20260906
+    paths:
+      - tests/lattice-333/**
+      - .github/workflows/lattice-333-validation.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential libssl-dev
+      - name: Build pinned components and run bounded cleanup probes
+        run: python3 tests/lattice-333/run.py lattice-333-results
+      - name: Preserve probe, environment, and raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lattice-333-cleanup-evidence
+          path: lattice-333-results
+          if-no-files-found: error
+          retention-days: 14
