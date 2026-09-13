@@ -117,7 +117,7 @@ cflags-filter.sh:
 		command -p sh posix-cflags-filter.sh "$$PATH";		\
 	fi > $@
 	if [ ! -s $@ ]; then						\
-		printf "# Compiler understands normal flags; ";			\
+		printf "# Compiler understands normal flags; ";		\
 		printf "nothing to filter out\n";			\
 	fi >> $@
 
