@@ -34,6 +34,7 @@ TESTS=	perftests/dynamodb_kv					\
 	perftests/s3						\
 	perftests/s3_put					\
 	perftests/serverpool					\
+	tests/json						\
 	tests/kvlds						\
 	tests/kvlds-blocking					\
 	tests/kvlds-ddbkv					\
@@ -102,7 +103,7 @@ posix-flags.sh:
 		command -p sh posix-l.sh "$$PATH";			\
 		printf "\"\n";						\
 		printf "export \"CFLAGS_POSIX=";			\
-		command -p sh posix-cflags.sh "$$PATH";			\
+		command -p sh posix-cflags.sh "$$PATH";		\
 		printf "\"\n";						\
 	fi > $@
 	if [ ! -s $@ ]; then						\
@@ -117,7 +118,7 @@ cflags-filter.sh:
 	fi > $@
 	if [ ! -s $@ ]; then						\
 		printf "# Compiler understands normal flags; ";		\
-		printf "nothing to filter out\n";			\
+		printf "nothing to filter out\n";				\
 	fi >> $@
 
 apisupport-config.h:
@@ -127,7 +128,7 @@ apisupport-config.h:
 		    ${LIBCPERCIVA_DIR}/apisupport/Build/apisupport.sh	\
 		    "$$PATH";						\
 	else								\
-		:;							\
+		:;								\
 	fi > $@
 
 cpusupport-config.h:
