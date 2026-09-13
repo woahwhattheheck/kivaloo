@@ -1,0 +1,14 @@
+PROG=	test_json
+SRCS=	main.c
+MAN1=
+
+# Useful relative directories
+LIBCPERCIVA_DIR	=	../../libcperciva
+
+# libcperciva includes
+IDIRS	+=	-I ${LIBCPERCIVA_DIR}/util
+
+test:	all
+	@./test_json
+
+.include <bsd.prog.mk>
