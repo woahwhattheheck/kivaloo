@@ -31,6 +31,22 @@ test_lookup(const struct testcase * t)
 	return (0);
 }
 
+static int
+test_reject(const struct testcase * t)
+{
+	const uint8_t * buf;
+	const uint8_t * end;
+
+	buf = (const uint8_t *)t->json;
+	end = &buf[strlen(t->json)];
+	if (json_find(buf, end, "target") != end) {
+		fprintf(stderr, "%s: malformed object accepted\n", t->description);
+		return (-1);
+	}
+
+	return (0);
+}
+
 int
 main(void)
 {
@@ -47,12 +63,25 @@ main(void)
 		{ "{\"prefix\":[1,\t2],\"target\":3}", "array tab" },
 		{ "{\"prefix\":[1,\r2],\"target\":3}",
 		    "array carriage return" },
-		{ "{\"prefix\":[1,\n2],\"target\":3}", "array newline" }
+		{ "{\"prefix\":[1,\n2],\"target\":3}", "array newline" },
+		{ "{\"target\":3,\"after\":{\"a\":1, \"b\":2}}",
+		    "valid member after target" },
+		{ "{\"target\":3,\"target\":4}", "first target wins" }
+	};
+	static const struct testcase rejects[] = {
+		{ "{\"target\":garbage}", "invalid target value" },
+		{ "{\"target\":3,\"after\":}", "invalid member after target" },
+		{ "{\"target\":3,\"after\"", "truncated member after target" },
+		{ "{\"target\":3,}", "trailing comma after target" }
 	};
 	size_t i;
 
 	for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
 		if (test_lookup(&tests[i]))
+			return (1);
+	}
+	for (i = 0; i < sizeof(rejects) / sizeof(rejects[0]); i++) {
+		if (test_reject(&rejects[i]))
 			return (1);
 	}
 
