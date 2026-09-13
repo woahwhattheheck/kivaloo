@@ -6,14 +6,24 @@ on:
     branches:
       - coverity-scan
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 # Run coverity scan.  For now, we're re-using the Travis-CI script, which
 # requires us to fake a TRAVIS_BRANCH environment variable.
 jobs:
   coverity-scan:
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Coverity scan
         env:
           COVERITY_SCAN_PROJECT_NAME: ${{ github.repository }}
@@ -22,4 +32,12 @@ jobs:
           COVERITY_SCAN_BUILD_COMMAND: make all
           COVERITY_SCAN_TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
           TRAVIS_BRANCH: coverity-scan
-        run: curl -s "https://scan.coverity.com/scripts/travisci_build_coverity_scan.sh" | bash || true
+        run: |
+          set -euo pipefail
+          script=$(mktemp)
+          trap 'rm -f "$script"' EXIT
+          curl --fail --show-error --silent --location \
+            --proto '=https' --tlsv1.2 \
+            'https://scan.coverity.com/scripts/travisci_build_coverity_scan.sh' \
+            --output "$script"
+          bash "$script"
