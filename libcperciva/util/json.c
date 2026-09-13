@@ -408,19 +408,24 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 const uint8_t *
 json_find(const uint8_t * buf, const uint8_t * end, const char * s)
 {
+	const uint8_t * value = end;
 	int foundit;
 
 	/* After optional whitespace there should be a '{'. */
 	SCAN(buf, end, '{');
 
-	/* Scan the object looking for the child we want. */
+	/* An empty object cannot contain the requested name. */
+	buf = skip_ws(buf, end);
+	if (buf == end)
+		return (end);
+	if (buf[0] == '}')
+		return (end);
+
+	/* Scan the entire object, remembering the first matching value. */
 	do {
-		/*
-		 * After optional whitespace we should have a '"' (unless
-		 * the object is empty, in which case the key we're looking
-		 * for is not present).
-		 */
-		SCAN(buf, end, '"');
+		/* The next member must begin with a string key. */
+		if (*buf++ != '"')
+			return (end);
 
 		/* Is this the string we want? */
 		buf = match_str(buf, end, s, &foundit);
@@ -431,19 +436,26 @@ json_find(const uint8_t * buf, const uint8_t * end, const char * s)
 		/* Skip whitespace looking for the associated value. */
 		buf = skip_ws(buf, end);
 
-		/* Return the value if this is the one we wanted. */
-		if (foundit)
-			return (buf);
+		/* Remember the first matching value, but keep validating. */
+		if (foundit && (value == end))
+			value = buf;
 
-		/* Skip this JSON object. */
+		/* Skip the value and any whitespace which follows it. */
 		buf = skip_value(buf, end);
+		buf = skip_ws(buf, end);
+		if (buf == end)
+			return (end);
 
-		/*
-		 * After optional whitespace we should have a ','.  (Or we
-		 * could hit the closing '}' of the object, but that would
-		 * mean that we don't have the key we're looking for anyway.)
-		 */
-		SCAN(buf, end, ',');
+		/* A closing brace completes a structurally valid object. */
+		if (buf[0] == '}')
+			return (value);
+
+		/* Otherwise another member must follow a comma. */
+		if (*buf++ != ',')
+			return (end);
+		buf = skip_ws(buf, end);
+		if (buf == end)
+			return (end);
 	} while (1);
 
 	/* NOTREACHED */
