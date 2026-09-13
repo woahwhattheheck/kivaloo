@@ -7,3 +7,4 @@ set -e
 ./test_onlinequantile case3.txt
 ./test_onlinequantile case4.txt
 ./test_onlinequantile case5.txt
+./test_onlinequantile case6.txt
