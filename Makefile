@@ -34,6 +34,7 @@ TESTS=	perftests/dynamodb_kv					\
 	perftests/s3						\
 	perftests/s3_put					\
 	perftests/serverpool					\
+	tests/json						\
 	tests/kvlds						\
 	tests/kvlds-blocking					\
 	tests/kvlds-ddbkv					\
