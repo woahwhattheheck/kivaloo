@@ -9,6 +9,19 @@ struct testcase {
 	const char * description;
 };
 
+struct named_testcase {
+	const char * json;
+	const char * target;
+	char expected;
+	const char * description;
+};
+
+struct byte_testcase {
+	const uint8_t * json;
+	size_t len;
+	const char * description;
+};
+
 static int
 test_lookup(const struct testcase * t)
 {
@@ -32,6 +45,28 @@ test_lookup(const struct testcase * t)
 }
 
 static int
+test_named_lookup(const struct named_testcase * t)
+{
+	const uint8_t * buf;
+	const uint8_t * end;
+	const uint8_t * value;
+
+	buf = (const uint8_t *)t->json;
+	end = &buf[strlen(t->json)];
+	value = json_find(buf, end, t->target);
+	if (value == end) {
+		fprintf(stderr, "%s: target not found\n", t->description);
+		return (-1);
+	}
+	if ((value >= end) || (value[0] != (uint8_t)t->expected)) {
+		fprintf(stderr, "%s: wrong target value\n", t->description);
+		return (-1);
+	}
+
+	return (0);
+}
+
+static int
 test_reject(const struct testcase * t)
 {
 	const uint8_t * buf;
@@ -47,9 +82,49 @@ test_reject(const struct testcase * t)
 	return (0);
 }
 
+static int
+test_reject_bytes(const struct byte_testcase * t)
+{
+	const uint8_t * end;
+
+	end = &t->json[t->len];
+	if (json_find(t->json, end, "target") != end) {
+		fprintf(stderr, "%s: malformed UTF-8 accepted\n", t->description);
+		return (-1);
+	}
+
+	return (0);
+}
+
 int
 main(void)
 {
+	static const uint8_t invalid_utf8_key[] = {
+		'{', '"', 0x80, '"', ':', '0', ',',
+		'"', 't', 'a', 'r', 'g', 'e', 't', '"', ':', '3', '}'
+	};
+	static const uint8_t invalid_utf8_value[] = {
+		'{', '"', 't', 'a', 'r', 'g', 'e', 't', '"', ':', '3', ',',
+		'"', 'a', 'f', 't', 'e', 'r', '"', ':', '"', 0x80, '"', '}'
+	};
+	static const uint8_t overlong_utf8_value[] = {
+		'{', '"', 't', 'a', 'r', 'g', 'e', 't', '"', ':', '3', ',',
+		'"', 'a', 'f', 't', 'e', 'r', '"', ':', '"', 0xC0, 0xAF, '"', '}'
+	};
+	static const uint8_t surrogate_utf8_value[] = {
+		'{', '"', 't', 'a', 'r', 'g', 'e', 't', '"', ':', '3', ',',
+		'"', 'a', 'f', 't', 'e', 'r', '"', ':', '"', 0xED, 0xA0, 0x80,
+		'"', '}'
+	};
+	static const uint8_t high_utf8_value[] = {
+		'{', '"', 't', 'a', 'r', 'g', 'e', 't', '"', ':', '3', ',',
+		'"', 'a', 'f', 't', 'e', 'r', '"', ':', '"', 0xF4, 0x90, 0x80,
+		0x80, '"', '}'
+	};
+	static const uint8_t truncated_utf8_value[] = {
+		'{', '"', 't', 'a', 'r', 'g', 'e', 't', '"', ':', '3', ',',
+		'"', 'a', 'f', 't', 'e', 'r', '"', ':', '"', 0xE2, 0x82, '"', '}'
+	};
 	static const struct testcase tests[] = {
 		{ "{\"prefix\":{\"a\":1, \"b\":2},\"target\":3}",
 		    "object space" },
@@ -72,6 +147,15 @@ main(void)
 		    "valid member after target" },
 		{ "{\"target\":3,\"target\":4}", "first target wins" }
 	};
+	static const struct named_testcase named_tests[] = {
+		{ "{\"\\u0074arget\":3}", "target", '3', "ASCII unicode escape" },
+		{ "{\"caf\\u00e9\":3}", "caf\xc3\xa9", '3', "BMP unicode escape" },
+		{ "{\"caf\xc3\xa9\":3}", "caf\xc3\xa9", '3', "raw UTF-8 key" },
+		{ "{\"\\ud83d\\ude80\":3}", "\xf0\x9f\x9a\x80", '3',
+		    "surrogate-pair unicode escape" },
+		{ "{\"\\u0000\":3,\"\":4}", "", '4',
+		    "escaped NUL does not alias empty key" }
+	};
 	static const struct testcase rejects[] = {
 		{ "{\"target\":garbage}", "invalid target value" },
 		{ "{\"target\":+}", "bare plus target" },
@@ -86,7 +170,23 @@ main(void)
 		    "invalid nested object key" },
 		{ "{\"target\":3,\"after\":}", "invalid member after target" },
 		{ "{\"target\":3,\"after\"", "truncated member after target" },
-		{ "{\"target\":3,}", "trailing comma after target" }
+		{ "{\"target\":3,}", "trailing comma after target" },
+		{ "{\"\\uZZZZ\":0,\"target\":3}",
+		    "invalid unicode escape before target" }
+	};
+	static const struct byte_testcase byte_rejects[] = {
+		{ invalid_utf8_key, sizeof(invalid_utf8_key),
+		    "stray continuation in key before target" },
+		{ invalid_utf8_value, sizeof(invalid_utf8_value),
+		    "stray continuation in string value" },
+		{ overlong_utf8_value, sizeof(overlong_utf8_value),
+		    "overlong UTF-8 in string value" },
+		{ surrogate_utf8_value, sizeof(surrogate_utf8_value),
+		    "UTF-8 encoded surrogate in string value" },
+		{ high_utf8_value, sizeof(high_utf8_value),
+		    "UTF-8 code point above U+10FFFF" },
+		{ truncated_utf8_value, sizeof(truncated_utf8_value),
+		    "truncated UTF-8 sequence in string value" }
 	};
 	size_t i;
 
@@ -94,8 +194,16 @@ main(void)
 		if (test_lookup(&tests[i]))
 			return (1);
 	}
+	for (i = 0; i < sizeof(named_tests) / sizeof(named_tests[0]); i++) {
+		if (test_named_lookup(&named_tests[i]))
+			return (1);
+	}
 	for (i = 0; i < sizeof(rejects) / sizeof(rejects[0]); i++) {
 		if (test_reject(&rejects[i]))
+			return (1);
+	}
+	for (i = 0; i < sizeof(byte_rejects) / sizeof(byte_rejects[0]); i++) {
+		if (test_reject_bytes(&byte_rejects[i]))
 			return (1);
 	}
 

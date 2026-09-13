@@ -22,14 +22,107 @@ skip_ws(const uint8_t * buf, const uint8_t * end)
 	return (buf);
 }
 
-/* Is this a hexadecimal digit? */
+/* Parse four hexadecimal digits. */
 static int
-is_hex(uint8_t ch)
+parse_hex4(const uint8_t * buf, uint16_t * value)
+{
+	uint16_t v;
+	uint8_t digit;
+	size_t i;
+
+	v = 0;
+	for (i = 0; i < 4; i++) {
+		if ((buf[i] >= '0') && (buf[i] <= '9'))
+			digit = (uint8_t)(buf[i] - '0');
+		else if ((buf[i] >= 'A') && (buf[i] <= 'F'))
+			digit = (uint8_t)(buf[i] - 'A' + 10);
+		else if ((buf[i] >= 'a') && (buf[i] <= 'f'))
+			digit = (uint8_t)(buf[i] - 'a' + 10);
+		else
+			return (-1);
+		v = (uint16_t)((v << 4) | digit);
+	}
+	*value = v;
+
+	return (0);
+}
+
+/* Is this a UTF-8 continuation byte? */
+static int
+utf8_cont(uint8_t ch)
 {
 
-	return (((ch >= '0') && (ch <= '9')) ||
-	    ((ch >= 'A') && (ch <= 'F')) ||
-	    ((ch >= 'a') && (ch <= 'f')));
+	return ((ch >= 0x80) && (ch <= 0xBF));
+}
+
+/* Validate one raw UTF-8 sequence and return its byte length. */
+static int
+utf8_len(const uint8_t * buf, const uint8_t * end, size_t * len)
+{
+	uint8_t ch;
+
+	if (buf == end)
+		return (-1);
+	ch = buf[0];
+
+	/* ASCII. */
+	if (ch <= 0x7F) {
+		*len = 1;
+		return (0);
+	}
+
+	/* Two-byte sequence; C0/C1 would be overlong. */
+	if ((ch >= 0xC2) && (ch <= 0xDF)) {
+		if ((end - buf < 2) || !utf8_cont(buf[1]))
+			return (-1);
+		*len = 2;
+		return (0);
+	}
+
+	/* Three-byte sequences, excluding overlongs and UTF-16 surrogates. */
+	if (end - buf >= 3) {
+		if ((ch == 0xE0) && (buf[1] >= 0xA0) &&
+		    (buf[1] <= 0xBF) && utf8_cont(buf[2])) {
+			*len = 3;
+			return (0);
+		}
+		if (((ch >= 0xE1) && (ch <= 0xEC)) ||
+		    ((ch >= 0xEE) && (ch <= 0xEF))) {
+			if (utf8_cont(buf[1]) && utf8_cont(buf[2])) {
+				*len = 3;
+				return (0);
+			}
+		}
+		if ((ch == 0xED) && (buf[1] >= 0x80) &&
+		    (buf[1] <= 0x9F) && utf8_cont(buf[2])) {
+			*len = 3;
+			return (0);
+		}
+	}
+
+	/* Four-byte sequences, capped at U+10FFFF. */
+	if (end - buf >= 4) {
+		if ((ch == 0xF0) && (buf[1] >= 0x90) &&
+		    (buf[1] <= 0xBF) && utf8_cont(buf[2]) &&
+		    utf8_cont(buf[3])) {
+			*len = 4;
+			return (0);
+		}
+		if ((ch >= 0xF1) && (ch <= 0xF3) &&
+		    utf8_cont(buf[1]) && utf8_cont(buf[2]) &&
+		    utf8_cont(buf[3])) {
+			*len = 4;
+			return (0);
+		}
+		if ((ch == 0xF4) && (buf[1] >= 0x80) &&
+		    (buf[1] <= 0x8F) && utf8_cont(buf[2]) &&
+		    utf8_cont(buf[3])) {
+			*len = 4;
+			return (0);
+		}
+	}
+
+	return (-1);
 }
 
 /* Advance past literal. */
@@ -49,55 +142,63 @@ skip_literal(const uint8_t * buf, const uint8_t * end)
 	return (end);
 }
 
-/* Advance past string. */
+/* Advance past a valid JSON string. */
 static const uint8_t *
 skip_string(const uint8_t * buf, const uint8_t * end)
 {
+	const uint8_t * raw;
+	size_t len;
+	uint16_t u;
 	uint8_t ch;
-	int i;
 
-	/* A JSON string must start with a quote. */
-	if ((buf == end) || (buf[0] != '"'))
+	/* A JSON string starts with a quote. */
+	if ((buf == end) || (*buf++ != '"'))
 		return (end);
-	buf++;
 
-	/* Scan until we find a valid terminating quote. */
+	/* Scan until a valid terminating quote or a syntax error. */
 	while (buf < end) {
+		raw = buf;
 		ch = *buf++;
 		if (ch == '"')
 			return (buf);
 
-		/* Unescaped control characters are not valid JSON string data. */
+		/* Raw control characters are not valid inside JSON strings. */
 		if (ch < 0x20)
 			return (end);
 
-		/* Validate escape sequences. */
-		if (ch == '\\') {
-			if (buf == end)
+		/* Non-ASCII raw string data must be valid UTF-8. */
+		if (ch >= 0x80) {
+			if (utf8_len(raw, end, &len))
 				return (end);
-			ch = *buf++;
-			switch (ch) {
-			case '"':
-			case '\\':
-			case '/':
-			case 'b':
-			case 'f':
-			case 'n':
-			case 'r':
-			case 't':
-				break;
-			case 'u':
-				if (end - buf < 4)
-					return (end);
-				for (i = 0; i < 4; i++) {
-					if (!is_hex(buf[i]))
-						return (end);
-				}
-				buf += 4;
-				break;
-			default:
+			buf = &raw[len];
+			continue;
+		}
+		if (ch != '\\')
+			continue;
+
+		/* Validate the escape sequence. */
+		if (buf == end)
+			return (end);
+		ch = *buf++;
+		switch (ch) {
+		case '"':
+		case '\\':
+		case '/':
+		case 'b':
+		case 'f':
+		case 'n':
+		case 'r':
+		case 't':
+			break;
+		case 'u':
+			if (end - buf < 4)
 				return (end);
-			}
+			if (parse_hex4(buf, &u))
+				return (end);
+			buf += 4;
+			break;
+		default:
+			return (end);
 		}
 	}
 
@@ -105,18 +206,18 @@ skip_string(const uint8_t * buf, const uint8_t * end)
 	return (end);
 }
 
-/* Advance past number. */
+/* Advance past a valid JSON number. */
 static const uint8_t *
 skip_number(const uint8_t * buf, const uint8_t * end)
 {
 
-	/* Optional minus sign. */
+	/* Optional leading minus. */
 	if ((buf < end) && (buf[0] == '-'))
 		buf++;
 	if (buf == end)
 		return (end);
 
-	/* Integer component: zero, or a non-zero digit followed by digits. */
+	/* Integer part: zero alone, or a non-zero digit followed by digits. */
 	if (buf[0] == '0') {
 		buf++;
 		if ((buf < end) && (buf[0] >= '0') && (buf[0] <= '9'))
@@ -124,24 +225,22 @@ skip_number(const uint8_t * buf, const uint8_t * end)
 	} else if ((buf[0] >= '1') && (buf[0] <= '9')) {
 		do {
 			buf++;
-		} while ((buf < end) && (buf[0] >= '0') &&
-		    (buf[0] <= '9'));
+		} while ((buf < end) && (buf[0] >= '0') && (buf[0] <= '9'));
 	} else {
 		return (end);
 	}
 
-	/* Optional fractional component requires at least one digit. */
+	/* Optional fraction requires at least one digit. */
 	if ((buf < end) && (buf[0] == '.')) {
 		buf++;
 		if ((buf == end) || (buf[0] < '0') || (buf[0] > '9'))
 			return (end);
 		do {
 			buf++;
-		} while ((buf < end) && (buf[0] >= '0') &&
-		    (buf[0] <= '9'));
+		} while ((buf < end) && (buf[0] >= '0') && (buf[0] <= '9'));
 	}
 
-	/* Optional exponent requires at least one digit. */
+	/* Optional exponent requires at least one digit after its sign. */
 	if ((buf < end) && ((buf[0] == 'e') || (buf[0] == 'E'))) {
 		buf++;
 		if ((buf < end) && ((buf[0] == '+') || (buf[0] == '-')))
@@ -150,8 +249,7 @@ skip_number(const uint8_t * buf, const uint8_t * end)
 			return (end);
 		do {
 			buf++;
-		} while ((buf < end) && (buf[0] >= '0') &&
-		    (buf[0] <= '9'));
+		} while ((buf < end) && (buf[0] >= '0') && (buf[0] <= '9'));
 	}
 
 	return (buf);
@@ -272,9 +370,8 @@ skip_value(const uint8_t * buf, const uint8_t * end)
 		/* This must be an object.  Skip it. */
 		return (skip_object(buf, end));
 	default:
-		/* A JSON number must start with '-' or a decimal digit. */
-		if ((buf[0] == '-') ||
-		    ((buf[0] >= '0') && (buf[0] <= '9')))
+		/* Could this be a JSON number? */
+		if ((buf[0] == '-') || ((buf[0] >= '0') && (buf[0] <= '9')))
 			return (skip_number(buf, end));
 
 		/* We don't have a valid JSON value.  Return. */
@@ -282,12 +379,94 @@ skip_value(const uint8_t * buf, const uint8_t * end)
 	}
 }
 
+/* Compare a Unicode code point against the UTF-8 target string. */
+static void
+match_codepoint(uint32_t cp, const char ** s, int * foundit)
+{
+	uint8_t utf8[4];
+	size_t len;
+	size_t i;
+
+	/* A C string target cannot represent an embedded NUL. */
+	if (cp == 0) {
+		*foundit = 0;
+		return;
+	}
+
+	if (cp <= 0x7FU) {
+		utf8[0] = (uint8_t)cp;
+		len = 1;
+	} else if (cp <= 0x7FFU) {
+		utf8[0] = (uint8_t)(0xC0U | (cp >> 6));
+		utf8[1] = (uint8_t)(0x80U | (cp & 0x3FU));
+		len = 2;
+	} else if ((cp >= 0xD800U) && (cp <= 0xDFFFU)) {
+		*foundit = 0;
+		return;
+	} else if (cp <= 0xFFFFU) {
+		utf8[0] = (uint8_t)(0xE0U | (cp >> 12));
+		utf8[1] = (uint8_t)(0x80U | ((cp >> 6) & 0x3FU));
+		utf8[2] = (uint8_t)(0x80U | (cp & 0x3FU));
+		len = 3;
+	} else {
+		utf8[0] = (uint8_t)(0xF0U | (cp >> 18));
+		utf8[1] = (uint8_t)(0x80U | ((cp >> 12) & 0x3FU));
+		utf8[2] = (uint8_t)(0x80U | ((cp >> 6) & 0x3FU));
+		utf8[3] = (uint8_t)(0x80U | (cp & 0x3FU));
+		len = 4;
+	}
+
+	for (i = 0; i < len; i++) {
+		if (((*s)[0] == '\0') || ((uint8_t)(*s)[0] != utf8[i]))
+			*foundit = 0;
+		if ((*s)[0] != '\0')
+			(*s)++;
+	}
+}
+
+/* Decode and compare a JSON \u escape. */
+static int
+match_uescape(const uint8_t ** bufp, const uint8_t * end, const char ** s,
+    int * foundit)
+{
+	const uint8_t * buf;
+	uint16_t u1;
+	uint16_t u2;
+	uint32_t cp;
+
+	buf = *bufp;
+	if (end - buf < 4)
+		return (-1);
+	if (parse_hex4(buf, &u1))
+		return (-1);
+	buf = &buf[4];
+	cp = u1;
+
+	/* Combine a UTF-16 surrogate pair when one is present. */
+	if ((u1 >= 0xD800U) && (u1 <= 0xDBFFU) && (end - buf >= 6) &&
+	    (buf[0] == '\\') && (buf[1] == 'u') &&
+	    (parse_hex4(&buf[2], &u2) == 0) &&
+	    (u2 >= 0xDC00U) && (u2 <= 0xDFFFU)) {
+		cp = 0x10000U + (((uint32_t)u1 - 0xD800U) << 10) +
+		    ((uint32_t)u2 - 0xDC00U);
+		buf = &buf[6];
+	}
+
+	match_codepoint(cp, s, foundit);
+	*bufp = buf;
+
+	return (0);
+}
+
 /* Advance to the end of the string.  Check if it matches. */
 static const uint8_t *
 match_str(const uint8_t * buf, const uint8_t * end, const char * s,
     int * foundit)
 {
-	char ch;
+	const uint8_t * raw;
+	size_t len;
+	size_t i;
+	uint8_t ch;
 
 	/* The string matches... unless we notice that it doesn't match. */
 	*foundit = 1;
@@ -296,13 +475,32 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 	do {
 		if (buf == end)
 			return (end);
-		ch = (char)(*buf++);
+		raw = buf;
+		ch = *buf++;
 
 		/* Have we hit the end of the string? */
 		if (ch == '"') {
 			if (s[0] != '\0')
 				*foundit = 0;
 			return (buf);
+		}
+
+		/* Raw control characters are not valid JSON string content. */
+		if (ch < 0x20)
+			return (end);
+
+		/* Validate and compare raw non-ASCII UTF-8 bytewise. */
+		if (ch >= 0x80) {
+			if (utf8_len(raw, end, &len))
+				return (end);
+			for (i = 0; i < len; i++) {
+				if ((uint8_t)s[0] != raw[i])
+					*foundit = 0;
+				if (*s)
+					s++;
+			}
+			buf = &raw[len];
+			continue;
 		}
 
 		/* Escape character? */
@@ -335,11 +533,9 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 				ch = 0x09;
 				break;
 			case 'u':
-				if (end - buf < 4)
+				if (match_uescape(&buf, end, &s, foundit))
 					return (end);
-				*foundit = 0;	/* Assume non-matching. */
-				buf += 4;
-				break;
+				continue;
 			default:
 				/* Invalid JSON. */
 				*foundit = 0;
@@ -348,7 +544,7 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 		}
 
 		/* Did this character match? */
-		if (ch != s[0])
+		if (ch != (uint8_t)s[0])
 			*foundit = 0;
 
 		/* Advance in the target if we haven't hit the end. */
@@ -392,10 +588,9 @@ json_find(const uint8_t * buf, const uint8_t * end, const char * s)
 
 	/* Scan the entire object, remembering the first matching value. */
 	do {
-		/* The next member must begin with a valid JSON string key. */
-		if ((buf[0] != '"') || (skip_string(buf, end) == end))
+		/* The next member must begin with a string key. */
+		if (*buf++ != '"')
 			return (end);
-		buf++;
 
 		/* Is this the string we want? */
 		buf = match_str(buf, end, s, &foundit);
