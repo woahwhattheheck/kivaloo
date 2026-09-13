@@ -229,4 +229,7 @@ onlinequantile_free(struct onlinequantile * Q)
 	/* Free heaps. */
 	doubleheap_free(Q->larger);
 	doubleheap_free(Q->smaller);
+
+	/* Free quantile structure. */
+	free(Q);
 }
