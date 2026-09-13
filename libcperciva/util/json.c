@@ -214,6 +214,107 @@ skip_value(const uint8_t * buf, const uint8_t * end)
 	}
 }
 
+/* Parse four hexadecimal digits. */
+static int
+parse_hex4(const uint8_t * buf, uint16_t * value)
+{
+	uint16_t v;
+	uint8_t digit;
+	size_t i;
+
+	v = 0;
+	for (i = 0; i < 4; i++) {
+		if ((buf[i] >= '0') && (buf[i] <= '9'))
+			digit = (uint8_t)(buf[i] - '0');
+		else if ((buf[i] >= 'A') && (buf[i] <= 'F'))
+			digit = (uint8_t)(buf[i] - 'A' + 10);
+		else if ((buf[i] >= 'a') && (buf[i] <= 'f'))
+			digit = (uint8_t)(buf[i] - 'a' + 10);
+		else
+			return (-1);
+		v = (uint16_t)((v << 4) | digit);
+	}
+	*value = v;
+
+	return (0);
+}
+
+/* Compare a Unicode code point against the UTF-8 target string. */
+static void
+match_codepoint(uint32_t cp, const char ** s, int * foundit)
+{
+	uint8_t utf8[4];
+	size_t len;
+	size_t i;
+
+	if (cp <= 0x7FU) {
+		utf8[0] = (uint8_t)cp;
+		len = 1;
+	} else if (cp <= 0x7FFU) {
+		utf8[0] = (uint8_t)(0xC0U | (cp >> 6));
+		utf8[1] = (uint8_t)(0x80U | (cp & 0x3FU));
+		len = 2;
+	} else if ((cp >= 0xD800U) && (cp <= 0xDFFFU)) {
+		*foundit = 0;
+		return;
+	} else if (cp <= 0xFFFFU) {
+		utf8[0] = (uint8_t)(0xE0U | (cp >> 12));
+		utf8[1] = (uint8_t)(0x80U | ((cp >> 6) & 0x3FU));
+		utf8[2] = (uint8_t)(0x80U | (cp & 0x3FU));
+		len = 3;
+	} else {
+		utf8[0] = (uint8_t)(0xF0U | (cp >> 18));
+		utf8[1] = (uint8_t)(0x80U | ((cp >> 12) & 0x3FU));
+		utf8[2] = (uint8_t)(0x80U | ((cp >> 6) & 0x3FU));
+		utf8[3] = (uint8_t)(0x80U | (cp & 0x3FU));
+		len = 4;
+	}
+
+	for (i = 0; i < len; i++) {
+		if (((*s)[0] == '\0') || ((uint8_t)(*s)[0] != utf8[i]))
+			*foundit = 0;
+		if ((*s)[0] != '\0')
+			(*s)++;
+	}
+}
+
+/* Decode and compare a JSON \u escape. */
+static int
+match_uescape(const uint8_t ** bufp, const uint8_t * end, const char ** s,
+    int * foundit)
+{
+	const uint8_t * buf;
+	uint16_t u1;
+	uint16_t u2;
+	uint32_t cp;
+
+	buf = *bufp;
+	if (end - buf < 4)
+		return (-1);
+	if (parse_hex4(buf, &u1)) {
+		*foundit = 0;
+		*bufp = &buf[4];
+		return (0);
+	}
+	buf = &buf[4];
+	cp = u1;
+
+	/* Combine a UTF-16 surrogate pair when one is present. */
+	if ((u1 >= 0xD800U) && (u1 <= 0xDBFFU) && (end - buf >= 6) &&
+	    (buf[0] == '\\') && (buf[1] == 'u') &&
+	    (parse_hex4(&buf[2], &u2) == 0) &&
+	    (u2 >= 0xDC00U) && (u2 <= 0xDFFFU)) {
+		cp = 0x10000U + (((uint32_t)u1 - 0xD800U) << 10) +
+		    ((uint32_t)u2 - 0xDC00U);
+		buf = &buf[6];
+	}
+
+	match_codepoint(cp, s, foundit);
+	*bufp = buf;
+
+	return (0);
+}
+
 /* Advance to the end of the string.  Check if it matches. */
 static const uint8_t *
 match_str(const uint8_t * buf, const uint8_t * end, const char * s,
@@ -267,11 +368,9 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 				ch = 0x09;
 				break;
 			case 'u':
-				if (end - buf < 4)
+				if (match_uescape(&buf, end, &s, foundit))
 					return (end);
-				*foundit = 0;	/* Assume non-matching. */
-				buf += 4;
-				break;
+				continue;
 			default:
 				/* Invalid JSON. */
 				*foundit = 0;
