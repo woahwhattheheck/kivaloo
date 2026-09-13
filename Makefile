@@ -103,7 +103,7 @@ posix-flags.sh:
 		command -p sh posix-l.sh "$$PATH";			\
 		printf "\"\n";						\
 		printf "export \"CFLAGS_POSIX=";			\
-		command -p sh posix-cflags.sh "$$PATH";		\
+		command -p sh posix-cflags.sh "$$PATH";			\
 		printf "\"\n";						\
 	fi > $@
 	if [ ! -s $@ ]; then						\
@@ -117,8 +117,8 @@ cflags-filter.sh:
 		command -p sh posix-cflags-filter.sh "$$PATH";		\
 	fi > $@
 	if [ ! -s $@ ]; then						\
-		printf "# Compiler understands normal flags; ";		\
-		printf "nothing to filter out\n";				\
+		printf "# Compiler understands normal flags; ";			\
+		printf "nothing to filter out\n";			\
 	fi >> $@
 
 apisupport-config.h:
@@ -128,7 +128,7 @@ apisupport-config.h:
 		    ${LIBCPERCIVA_DIR}/apisupport/Build/apisupport.sh	\
 		    "$$PATH";						\
 	else								\
-		:;								\
+		:;							\
 	fi > $@
 
 cpusupport-config.h:
