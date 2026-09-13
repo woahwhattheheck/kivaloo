@@ -47,6 +47,84 @@ parse_hex4(const uint8_t * buf, uint16_t * value)
 	return (0);
 }
 
+/* Is this a UTF-8 continuation byte? */
+static int
+utf8_cont(uint8_t ch)
+{
+
+	return ((ch >= 0x80) && (ch <= 0xBF));
+}
+
+/* Validate one raw UTF-8 sequence and return its byte length. */
+static int
+utf8_len(const uint8_t * buf, const uint8_t * end, size_t * len)
+{
+	uint8_t ch;
+
+	if (buf == end)
+		return (-1);
+	ch = buf[0];
+
+	/* ASCII. */
+	if (ch <= 0x7F) {
+		*len = 1;
+		return (0);
+	}
+
+	/* Two-byte sequence; C0/C1 would be overlong. */
+	if ((ch >= 0xC2) && (ch <= 0xDF)) {
+		if ((end - buf < 2) || !utf8_cont(buf[1]))
+			return (-1);
+		*len = 2;
+		return (0);
+	}
+
+	/* Three-byte sequences, excluding overlongs and UTF-16 surrogates. */
+	if (end - buf >= 3) {
+		if ((ch == 0xE0) && (buf[1] >= 0xA0) &&
+		    (buf[1] <= 0xBF) && utf8_cont(buf[2])) {
+			*len = 3;
+			return (0);
+		}
+		if (((ch >= 0xE1) && (ch <= 0xEC)) ||
+		    ((ch >= 0xEE) && (ch <= 0xEF))) {
+			if (utf8_cont(buf[1]) && utf8_cont(buf[2])) {
+				*len = 3;
+				return (0);
+			}
+		}
+		if ((ch == 0xED) && (buf[1] >= 0x80) &&
+		    (buf[1] <= 0x9F) && utf8_cont(buf[2])) {
+			*len = 3;
+			return (0);
+		}
+	}
+
+	/* Four-byte sequences, capped at U+10FFFF. */
+	if (end - buf >= 4) {
+		if ((ch == 0xF0) && (buf[1] >= 0x90) &&
+		    (buf[1] <= 0xBF) && utf8_cont(buf[2]) &&
+		    utf8_cont(buf[3])) {
+			*len = 4;
+			return (0);
+		}
+		if ((ch >= 0xF1) && (ch <= 0xF3) &&
+		    utf8_cont(buf[1]) && utf8_cont(buf[2]) &&
+		    utf8_cont(buf[3])) {
+			*len = 4;
+			return (0);
+		}
+		if ((ch == 0xF4) && (buf[1] >= 0x80) &&
+		    (buf[1] <= 0x8F) && utf8_cont(buf[2]) &&
+		    utf8_cont(buf[3])) {
+			*len = 4;
+			return (0);
+		}
+	}
+
+	return (-1);
+}
+
 /* Advance past literal. */
 static const uint8_t *
 skip_literal(const uint8_t * buf, const uint8_t * end)
@@ -68,6 +146,8 @@ skip_literal(const uint8_t * buf, const uint8_t * end)
 static const uint8_t *
 skip_string(const uint8_t * buf, const uint8_t * end)
 {
+	const uint8_t * raw;
+	size_t len;
 	uint16_t u;
 	uint8_t ch;
 
@@ -77,6 +157,7 @@ skip_string(const uint8_t * buf, const uint8_t * end)
 
 	/* Scan until a valid terminating quote or a syntax error. */
 	while (buf < end) {
+		raw = buf;
 		ch = *buf++;
 		if (ch == '"')
 			return (buf);
@@ -84,6 +165,14 @@ skip_string(const uint8_t * buf, const uint8_t * end)
 		/* Raw control characters are not valid inside JSON strings. */
 		if (ch < 0x20)
 			return (end);
+
+		/* Non-ASCII raw string data must be valid UTF-8. */
+		if (ch >= 0x80) {
+			if (utf8_len(raw, end, &len))
+				return (end);
+			buf = &raw[len];
+			continue;
+		}
 		if (ch != '\\')
 			continue;
 
@@ -374,7 +463,10 @@ static const uint8_t *
 match_str(const uint8_t * buf, const uint8_t * end, const char * s,
     int * foundit)
 {
-	char ch;
+	const uint8_t * raw;
+	size_t len;
+	size_t i;
+	uint8_t ch;
 
 	/* The string matches... unless we notice that it doesn't match. */
 	*foundit = 1;
@@ -383,7 +475,8 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 	do {
 		if (buf == end)
 			return (end);
-		ch = (char)(*buf++);
+		raw = buf;
+		ch = *buf++;
 
 		/* Have we hit the end of the string? */
 		if (ch == '"') {
@@ -393,8 +486,22 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 		}
 
 		/* Raw control characters are not valid JSON string content. */
-		if ((uint8_t)ch < 0x20)
+		if (ch < 0x20)
 			return (end);
+
+		/* Validate and compare raw non-ASCII UTF-8 bytewise. */
+		if (ch >= 0x80) {
+			if (utf8_len(raw, end, &len))
+				return (end);
+			for (i = 0; i < len; i++) {
+				if ((uint8_t)s[0] != raw[i])
+					*foundit = 0;
+				if (*s)
+					s++;
+			}
+			buf = &raw[len];
+			continue;
+		}
 
 		/* Escape character? */
 		if (ch == '\\') {
@@ -437,7 +544,7 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 		}
 
 		/* Did this character match? */
-		if (ch != s[0])
+		if (ch != (uint8_t)s[0])
 			*foundit = 0;
 
 		/* Advance in the target if we haven't hit the end. */
