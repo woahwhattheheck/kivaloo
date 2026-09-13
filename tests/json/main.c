@@ -64,12 +64,26 @@ main(void)
 		{ "{\"prefix\":[1,\r2],\"target\":3}",
 		    "array carriage return" },
 		{ "{\"prefix\":[1,\n2],\"target\":3}", "array newline" },
+		{ "{\"prefix\":-0.5e+2,\"target\":3}",
+		    "valid strict number" },
+		{ "{\"prefix\":\"line\\n\\u0041\",\"target\":3}",
+		    "valid escaped string" },
 		{ "{\"target\":3,\"after\":{\"a\":1, \"b\":2}}",
 		    "valid member after target" },
 		{ "{\"target\":3,\"target\":4}", "first target wins" }
 	};
 	static const struct testcase rejects[] = {
 		{ "{\"target\":garbage}", "invalid target value" },
+		{ "{\"target\":+}", "bare plus target" },
+		{ "{\"target\":01}", "leading zero target" },
+		{ "{\"target\":1.}", "missing fraction digit" },
+		{ "{\"target\":1e}", "missing exponent digit" },
+		{ "{\"target\":\"\\q\"}", "invalid string escape" },
+		{ "{\"target\":\"\\u12xz\"}", "invalid unicode escape" },
+		{ "{\"target\":\"bad\nstring\"}", "raw string newline" },
+		{ "{\"target\":3,\"after\":+}", "invalid trailing number" },
+		{ "{\"target\":3,\"after\":{bad\":1}}",
+		    "invalid nested object key" },
 		{ "{\"target\":3,\"after\":}", "invalid member after target" },
 		{ "{\"target\":3,\"after\"", "truncated member after target" },
 		{ "{\"target\":3,}", "trailing comma after target" }
