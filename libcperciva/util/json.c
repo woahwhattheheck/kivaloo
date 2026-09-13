@@ -22,6 +22,16 @@ skip_ws(const uint8_t * buf, const uint8_t * end)
 	return (buf);
 }
 
+/* Is this a hexadecimal digit? */
+static int
+is_hex(uint8_t ch)
+{
+
+	return (((ch >= '0') && (ch <= '9')) ||
+	    ((ch >= 'A') && (ch <= 'F')) ||
+	    ((ch >= 'a') && (ch <= 'f')));
+}
+
 /* Advance past literal. */
 static const uint8_t *
 skip_literal(const uint8_t * buf, const uint8_t * end)
@@ -44,49 +54,106 @@ static const uint8_t *
 skip_string(const uint8_t * buf, const uint8_t * end)
 {
 	uint8_t ch;
+	int i;
 
-	/* Advance past leading '"'. */
+	/* A JSON string must start with a quote. */
+	if ((buf == end) || (buf[0] != '"'))
+		return (end);
 	buf++;
 
-	/* Scan until we find a terminating '"' or run out of input. */
+	/* Scan until we find a valid terminating quote. */
 	while (buf < end) {
 		ch = *buf++;
 		if (ch == '"')
-			break;
+			return (buf);
+
+		/* Unescaped control characters are not valid JSON string data. */
+		if (ch < 0x20)
+			return (end);
+
+		/* Validate escape sequences. */
 		if (ch == '\\') {
 			if (buf == end)
-				break;
+				return (end);
 			ch = *buf++;
-			if (ch == 'u') {
+			switch (ch) {
+			case '"':
+			case '\\':
+			case '/':
+			case 'b':
+			case 'f':
+			case 'n':
+			case 'r':
+			case 't':
+				break;
+			case 'u':
 				if (end - buf < 4)
-					break;
+					return (end);
+				for (i = 0; i < 4; i++) {
+					if (!is_hex(buf[i]))
+						return (end);
+				}
 				buf += 4;
+				break;
+			default:
+				return (end);
 			}
 		}
 	}
 
-	/* Return our current position. */
-	return (buf);
+	/* Unterminated string. */
+	return (end);
 }
 
 /* Advance past number. */
-static char numchars[] = "+-0123456789.eE";
 static const uint8_t *
 skip_number(const uint8_t * buf, const uint8_t * end)
 {
 
-	/*
-	 * In valid JSON, any sequence of (unquoted) characters which
-	 * individually can be found in a number must collectively be a
-	 * number -- so we eat those until we run out.
-	 */
-	while (buf < end) {
-		if (strchr(numchars, buf[0]) == NULL)
-			break;
+	/* Optional minus sign. */
+	if ((buf < end) && (buf[0] == '-'))
 		buf++;
+	if (buf == end)
+		return (end);
+
+	/* Integer component: zero, or a non-zero digit followed by digits. */
+	if (buf[0] == '0') {
+		buf++;
+		if ((buf < end) && (buf[0] >= '0') && (buf[0] <= '9'))
+			return (end);
+	} else if ((buf[0] >= '1') && (buf[0] <= '9')) {
+		do {
+			buf++;
+		} while ((buf < end) && (buf[0] >= '0') &&
+		    (buf[0] <= '9'));
+	} else {
+		return (end);
 	}
 
-	/* Return our current position. */
+	/* Optional fractional component requires at least one digit. */
+	if ((buf < end) && (buf[0] == '.')) {
+		buf++;
+		if ((buf == end) || (buf[0] < '0') || (buf[0] > '9'))
+			return (end);
+		do {
+			buf++;
+		} while ((buf < end) && (buf[0] >= '0') &&
+		    (buf[0] <= '9'));
+	}
+
+	/* Optional exponent requires at least one digit. */
+	if ((buf < end) && ((buf[0] == 'e') || (buf[0] == 'E'))) {
+		buf++;
+		if ((buf < end) && ((buf[0] == '+') || (buf[0] == '-')))
+			buf++;
+		if ((buf == end) || (buf[0] < '0') || (buf[0] > '9'))
+			return (end);
+		do {
+			buf++;
+		} while ((buf < end) && (buf[0] >= '0') &&
+		    (buf[0] <= '9'));
+	}
+
 	return (buf);
 }
 
@@ -205,8 +272,9 @@ skip_value(const uint8_t * buf, const uint8_t * end)
 		/* This must be an object.  Skip it. */
 		return (skip_object(buf, end));
 	default:
-		/* Could this plausibly be a number? */
-		if (strchr(numchars, buf[0]) != NULL)
+		/* A JSON number must start with '-' or a decimal digit. */
+		if ((buf[0] == '-') ||
+		    ((buf[0] >= '0') && (buf[0] <= '9')))
 			return (skip_number(buf, end));
 
 		/* We don't have a valid JSON value.  Return. */
@@ -324,9 +392,10 @@ json_find(const uint8_t * buf, const uint8_t * end, const char * s)
 
 	/* Scan the entire object, remembering the first matching value. */
 	do {
-		/* The next member must begin with a string key. */
-		if (*buf++ != '"')
+		/* The next member must begin with a valid JSON string key. */
+		if ((buf[0] != '"') || (skip_string(buf, end) == end))
 			return (end);
+		buf++;
 
 		/* Is this the string we want? */
 		buf = match_str(buf, end, s, &foundit);
