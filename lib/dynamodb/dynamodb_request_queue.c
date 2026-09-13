@@ -299,6 +299,7 @@ callback_reqdone(void * cookie, struct http_response * res)
 	struct timeval t_end;
 	double treq;
 	int rc = 0;
+	int response_forwarded = 0;
 	double capacity = 0.0;
 	char * ddberr = NULL;
 
@@ -382,6 +383,9 @@ callback_reqdone(void * cookie, struct http_response * res)
 		else
 			Q->tmud += ((Q->tmu - treq) - Q->tmud) * 0.25;
 
+		/* The upstream callback assumes ownership of the response body. */
+		response_forwarded = 1;
+
 		/* Invoke the upstream callback. */
 		if (rc) {
 			(void)(R->callback)(R->cookie, res, ddberr);
@@ -392,6 +396,12 @@ callback_reqdone(void * cookie, struct http_response * res)
 		/* Free the request; we're done with it now. */
 		free(R->logstr);
 		free(R);
+	}
+
+	/* Free response bodies which the queue retains instead of forwarding. */
+	if ((res != NULL) && !response_forwarded) {
+		free(res->body);
+		res->body = NULL;
 	}
 
 	/*
