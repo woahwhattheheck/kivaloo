@@ -139,6 +139,12 @@ callback_reqdone(void * cookie, struct http_response * res)
 	return (rc);
 
 tryagain:
+	/* The retry path retains no response object; free its body now. */
+	if (res != NULL) {
+		free(res->body);
+		res->body = NULL;
+	}
+
 	/* Add this request back to the queue. */
 	R->prev = Q->reqs_queued_tail;
 	R->next = NULL;
