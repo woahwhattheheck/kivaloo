@@ -6,6 +6,7 @@
 
 struct testcase {
 	const char * json;
+	const char * target;
 	const char * description;
 };
 
@@ -18,7 +19,7 @@ test_lookup(const struct testcase * t)
 
 	buf = (const uint8_t *)t->json;
 	end = &buf[strlen(t->json)];
-	value = json_find(buf, end, "target");
+	value = json_find(buf, end, t->target);
 	if (value == end) {
 		fprintf(stderr, "%s: target not found\n", t->description);
 		return (-1);
@@ -35,19 +36,23 @@ int
 main(void)
 {
 	static const struct testcase tests[] = {
-		{ "{\"prefix\":{\"a\":1, \"b\":2},\"target\":3}",
+		{ "{\"prefix\":{\"a\":1, \"b\":2},\"target\":3}", "target",
 		    "object space" },
-		{ "{\"prefix\":{\"a\":1,\t\"b\":2},\"target\":3}",
+		{ "{\"prefix\":{\"a\":1,\t\"b\":2},\"target\":3}", "target",
 		    "object tab" },
-		{ "{\"prefix\":{\"a\":1,\r\"b\":2},\"target\":3}",
+		{ "{\"prefix\":{\"a\":1,\r\"b\":2},\"target\":3}", "target",
 		    "object carriage return" },
-		{ "{\"prefix\":{\"a\":1,\n\"b\":2},\"target\":3}",
+		{ "{\"prefix\":{\"a\":1,\n\"b\":2},\"target\":3}", "target",
 		    "object newline" },
-		{ "{\"prefix\":[1, 2],\"target\":3}", "array space" },
-		{ "{\"prefix\":[1,\t2],\"target\":3}", "array tab" },
-		{ "{\"prefix\":[1,\r2],\"target\":3}",
+		{ "{\"prefix\":[1, 2],\"target\":3}", "target", "array space" },
+		{ "{\"prefix\":[1,\t2],\"target\":3}", "target", "array tab" },
+		{ "{\"prefix\":[1,\r2],\"target\":3}", "target",
 		    "array carriage return" },
-		{ "{\"prefix\":[1,\n2],\"target\":3}", "array newline" }
+		{ "{\"prefix\":[1,\n2],\"target\":3}", "target", "array newline" },
+		{ "{\"\\u0074arget\":3}", "target", "ASCII unicode escape" },
+		{ "{\"caf\\u00e9\":3}", "caf\xc3\xa9", "BMP unicode escape" },
+		{ "{\"\\ud83d\\ude80\":3}", "\xf0\x9f\x9a\x80",
+		    "surrogate-pair unicode escape" }
 	};
 	size_t i;
 
