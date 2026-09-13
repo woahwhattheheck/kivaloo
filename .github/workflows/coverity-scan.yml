@@ -22,4 +22,7 @@ jobs:
           COVERITY_SCAN_BUILD_COMMAND: make all
           COVERITY_SCAN_TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
           TRAVIS_BRANCH: coverity-scan
-        run: curl -s "https://scan.coverity.com/scripts/travisci_build_coverity_scan.sh" | bash || true
+        run: |
+          set -o pipefail
+          curl --fail --show-error --silent \
+            "https://scan.coverity.com/scripts/travisci_build_coverity_scan.sh" | bash
