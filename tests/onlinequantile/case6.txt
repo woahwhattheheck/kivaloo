@@ -1,0 +1,5 @@
+# Interpolation must not overflow for finite values of opposite signs.
+q	0.5
+a	-1e308
+a	1e308
+g	0

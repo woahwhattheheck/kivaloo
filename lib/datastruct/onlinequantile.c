@@ -91,7 +91,13 @@ onlinequantile_get(struct onlinequantile * Q, double * x)
 		assert(Q->N_smaller < Q->N);
 
 		/* Compute the average. */
-		*x = Q->smaller_max + (Q->larger_min - Q->smaller_max) * r;
+		if ((Q->smaller_max < 0.0) && (Q->larger_min > 0.0)) {
+			/* Avoid overflow when subtracting opposite-signed values. */
+			*x = Q->smaller_max * (1.0 - r) + Q->larger_min * r;
+		} else {
+			*x = Q->smaller_max +
+			    (Q->larger_min - Q->smaller_max) * r;
+		}
 	} else {
 		/* The median is just a single value. */
 		*x = Q->smaller_max;
