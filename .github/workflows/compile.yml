@@ -6,6 +6,9 @@ on:
 
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -36,13 +39,16 @@ jobs:
   Ubuntu:
     name: Ubuntu
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
     steps:
     - name: Update apt-get
       run: sudo apt-get update
     - name: Install software
       run: sudo apt-get install --no-install-recommends valgrind
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
     - name: Compile with clang
       env:
         CC: clang-13
@@ -77,9 +83,12 @@ jobs:
   macOS:
     name: macOS
     runs-on: macos-14
+    timeout-minutes: 15
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
     - name: Compile with clang
       env:
         CC: clang
