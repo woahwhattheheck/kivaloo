@@ -96,7 +96,9 @@ main(void)
 		{ "{\"target\":garbage}", "target", "invalid target value" },
 		{ "{\"target\":3,\"after\":}", "target", "invalid member after target" },
 		{ "{\"target\":3,\"after\"", "target", "truncated member after target" },
-		{ "{\"target\":3,}", "target", "trailing comma after target" }
+		{ "{\"target\":3,}", "target", "trailing comma after target" },
+		{ "{\"\\uZZZZ\":0,\"target\":3}", "target",
+		    "invalid unicode escape before target" }
 	};
 	size_t i;
 
