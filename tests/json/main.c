@@ -84,6 +84,9 @@ main(void)
 		{ "{\"prefix\":[1,\r2],\"target\":3}", "target",
 		    "array carriage return" },
 		{ "{\"prefix\":[1,\n2],\"target\":3}", "target", "array newline" },
+		{ "{\"prefix\":-0,\"target\":3}", "target", "valid negative zero" },
+		{ "{\"prefix\":1.25,\"target\":3}", "target", "valid fraction" },
+		{ "{\"prefix\":1e+2,\"target\":3}", "target", "valid exponent" },
 		{ "{\"target\":3,\"after\":{\"a\":1, \"b\":2}}", "target",
 		    "valid member after target" },
 		{ "{\"target\":3,\"target\":4}", "target", "first target wins" },
@@ -98,7 +101,11 @@ main(void)
 		{ "{\"target\":3,\"after\"", "target", "truncated member after target" },
 		{ "{\"target\":3,}", "target", "trailing comma after target" },
 		{ "{\"\\uZZZZ\":0,\"target\":3}", "target",
-		    "invalid unicode escape before target" }
+		    "invalid unicode escape before target" },
+		{ "{\"target\":3,\"after\":+}", "target", "leading plus after target" },
+		{ "{\"prefix\":01,\"target\":3}", "target", "leading zero before target" },
+		{ "{\"target\":3,\"after\":1e}", "target", "incomplete exponent after target" },
+		{ "{\"target\":3,\"after\":\"\001\"}", "target", "raw control in string after target" }
 	};
 	size_t i;
 
