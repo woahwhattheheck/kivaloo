@@ -42,6 +42,7 @@ perftests/s3/test_s3
 perftests/s3_put/s3_put
 perftests/serverpool/test_serverpool
 s3/s3
+tests/json/test_json
 tests/kvlds-blocking/test_kvlds_blocking
 tests/kvlds-ddbkv/test_kvlds
 tests/kvlds-s3/test_kvlds
@@ -62,4 +63,4 @@ tests/*/*.full
 tests/*/.depend
 # python tests
 tests/python/__pycache__
-tests/python/kivaloo/__pycache__
+tests/python/kivaloo/__pycache__/
