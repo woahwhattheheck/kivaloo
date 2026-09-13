@@ -71,7 +71,8 @@ main(void)
 	static const struct testcase rejects[] = {
 		{ "{\"target\":garbage}", "invalid target value" },
 		{ "{\"target\":3,\"after\":}", "invalid member after target" },
-		{ "{\"target\":3,\"after\"", "truncated member after target" }
+		{ "{\"target\":3,\"after\"", "truncated member after target" },
+		{ "{\"target\":3,}", "trailing comma after target" }
 	};
 	size_t i;
 
