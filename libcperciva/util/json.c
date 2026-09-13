@@ -315,15 +315,15 @@ json_find(const uint8_t * buf, const uint8_t * end, const char * s)
 	/* After optional whitespace there should be a '{'. */
 	SCAN(buf, end, '{');
 
+	/* An empty object cannot contain the requested name. */
+	buf = skip_ws(buf, end);
+	if (buf == end)
+		return (end);
+	if (buf[0] == '}')
+		return (end);
+
 	/* Scan the entire object, remembering the first matching value. */
 	do {
-		/* Skip whitespace and check for the end of the object. */
-		buf = skip_ws(buf, end);
-		if (buf == end)
-			return (end);
-		if (buf[0] == '}')
-			return (value);
-
 		/* The next member must begin with a string key. */
 		if (*buf++ != '"')
 			return (end);
@@ -353,6 +353,9 @@ json_find(const uint8_t * buf, const uint8_t * end, const char * s)
 
 		/* Otherwise another member must follow a comma. */
 		if (*buf++ != ',')
+			return (end);
+		buf = skip_ws(buf, end);
+		if (buf == end)
 			return (end);
 	} while (1);
 
