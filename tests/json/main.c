@@ -32,6 +32,25 @@ test_lookup(const struct testcase * t)
 	return (0);
 }
 
+static int
+test_nul_alias(void)
+{
+	const char * json = "{\"\\u0000\":3,\"\":4}";
+	const uint8_t * buf;
+	const uint8_t * end;
+	const uint8_t * value;
+
+	buf = (const uint8_t *)json;
+	end = &buf[strlen(json)];
+	value = json_find(buf, end, "");
+	if ((value == end) || (value[0] != '4')) {
+		fprintf(stderr, "escaped NUL matched empty key\n");
+		return (-1);
+	}
+
+	return (0);
+}
+
 int
 main(void)
 {
@@ -60,6 +79,8 @@ main(void)
 		if (test_lookup(&tests[i]))
 			return (1);
 	}
+	if (test_nul_alias())
+		return (1);
 
 	return (0);
 }
