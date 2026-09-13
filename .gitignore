@@ -12,7 +12,7 @@ bench/bulk_insert/bulk_insert
 bench/bulk_update/bulk_update
 bench/hotspot_read/hotspot_read
 bench/mkpairs/mkpairs
-bench/random_mixed/random_mixed
+bench/random_mixed/mixed
 bench/random_read/random_read
 bench/tokyo/tokyo
 dynamodb-kv/dynamodb-kv
@@ -63,4 +63,4 @@ tests/*/*.full
 tests/*/.depend
 # python tests
 tests/python/__pycache__
-tests/python/kivaloo/__pycache__/
+tests/python/kivaloo/__pycache__
