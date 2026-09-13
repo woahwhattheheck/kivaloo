@@ -247,6 +247,12 @@ match_codepoint(uint32_t cp, const char ** s, int * foundit)
 	size_t len;
 	size_t i;
 
+	/* A C string target cannot represent an embedded NUL. */
+	if (cp == 0) {
+		*foundit = 0;
+		return;
+	}
+
 	if (cp <= 0x7FU) {
 		utf8[0] = (uint8_t)cp;
 		len = 1;
@@ -291,11 +297,8 @@ match_uescape(const uint8_t ** bufp, const uint8_t * end, const char ** s,
 	buf = *bufp;
 	if (end - buf < 4)
 		return (-1);
-	if (parse_hex4(buf, &u1)) {
-		*foundit = 0;
-		*bufp = &buf[4];
-		return (0);
-	}
+	if (parse_hex4(buf, &u1))
+		return (-1);
 	buf = &buf[4];
 	cp = u1;
 
