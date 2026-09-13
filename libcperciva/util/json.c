@@ -391,12 +391,12 @@ match_str(const uint8_t * buf, const uint8_t * end, const char * s,
 }
 
 /* Helper for scanning for a character. */
-#define SCAN(buf, end, ch) do {\	\t\t\\
-\tbuf = skip_ws(buf, end);\	\t\\
-\tif (buf == end)\	\t\t\t\\
-\t\treturn (end);\	\t\t\\
-\tif (*buf++ != ch)\	\t\t\\
-\t\treturn (end);\	\t\t\\
+#define SCAN(buf, end, ch) do {			\
+	buf = skip_ws(buf, end);		\
+	if (buf == end)				\
+		return (end);			\
+	if (*buf++ != ch)			\
+		return (end);			\
 } while (0)
 
 /**
