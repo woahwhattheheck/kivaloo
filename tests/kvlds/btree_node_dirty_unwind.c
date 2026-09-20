@@ -298,7 +298,8 @@ run_case(const char * name, unsigned int type, size_t fail_at)
 	struct btree T;
 	struct pool P;
 	struct node N;
-	struct node parent;
+	struct node shadow_parent;
+	struct node dirty_parent;
 	struct pool_elem N_elem;
 	struct kvpair_const pairs[2];
 	const struct kvldskey * keys[2];
@@ -309,7 +310,8 @@ run_case(const char * name, unsigned int type, size_t fail_at)
 	memset(&T, 0, sizeof(T));
 	memset(&P, 0, sizeof(P));
 	memset(&N, 0, sizeof(N));
-	memset(&parent, 0, sizeof(parent));
+	memset(&shadow_parent, 0, sizeof(shadow_parent));
+	memset(&dirty_parent, 0, sizeof(dirty_parent));
 	memset(&N_elem, 0, sizeof(N_elem));
 	memset(pairs, 0, sizeof(pairs));
 	memset(keys, 0, sizeof(keys));
@@ -318,16 +320,18 @@ run_case(const char * name, unsigned int type, size_t fail_at)
 	P.offset = offsetof(struct node, pool_cookie);
 	T.P = &P;
 
-	parent.type = NODE_TYPE_PARENT;
-	parent.state = NODE_STATE_DIRTY;
+	shadow_parent.type = NODE_TYPE_PARENT;
+	shadow_parent.state = NODE_STATE_CLEAN;
+	dirty_parent.type = NODE_TYPE_PARENT;
+	dirty_parent.state = NODE_STATE_DIRTY;
 
 	N.type = type;
 	N.state = NODE_STATE_CLEAN;
 	N.root = 0;
 	N.height = (type == NODE_TYPE_LEAF) ? 0 : 1;
 	N.nkeys = 2;
-	N.p_shadow = &parent;
-	N.p_dirty = &parent;
+	N.p_shadow = &shadow_parent;
+	N.p_dirty = &dirty_parent;
 	N.pool_cookie = &N_elem;
 	N_elem.wire_count = 1;
 	if (type == NODE_TYPE_LEAF)
