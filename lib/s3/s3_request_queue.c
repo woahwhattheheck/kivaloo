@@ -404,6 +404,10 @@ s3_request_queue_flush(struct s3_request_queue * Q)
 		http_request_cancel(R->http_cookie);
 		Q->reqs_ip_head = R->next;
 		sock_addr_free(R->addrs[0]);
+
+		/* This request is no longer in progress. */
+		Q->reqsip -= 1;
+
 		free(R);
 	}
 	Q->reqs_ip_tail = NULL;
