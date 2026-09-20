@@ -51,7 +51,7 @@ static int (* nextblk_callback)(void *);
 static void * nextblk_cookie;
 static int (* lastblk_callback)(void *);
 static void * lastblk_cookie;
-static struct put_capture puts[8];
+static struct put_capture put_caps[8];
 static size_t user_callbacks;
 static uint64_t user_nextblk;
 
@@ -70,7 +70,7 @@ reset_capture(void)
 	nextblk_cookie = NULL;
 	lastblk_callback = NULL;
 	lastblk_cookie = NULL;
-	memset(puts, 0, sizeof(puts));
+	memset(put_caps, 0, sizeof(put_caps));
 	user_callbacks = 0;
 	user_nextblk = 0;
 }
@@ -196,9 +196,9 @@ test_request_put(struct wire_requestqueue * Q, const char * key,
 	put_calls++;
 	if ((put_fail_at != 0) && (put_calls == (size_t)put_fail_at))
 		return (-1);
-	assert(nputs < sizeof(puts) / sizeof(puts[0]));
-	puts[nputs].callback = callback;
-	puts[nputs].cookie = cookie;
+	assert(nputs < sizeof(put_caps) / sizeof(put_caps[0]));
+	put_caps[nputs].callback = callback;
+	put_caps[nputs].cookie = cookie;
 	nputs++;
 	return (0);
 }
@@ -266,9 +266,9 @@ test_partial_schedule_failure(void)
 	assert(nextblk_callback(nextblk_cookie) == 0);
 	assert(nputs == 2);
 	assert(S.npending == 1);
-	assert(puts[0].callback(puts[0].cookie, 0) == 0);
+	assert(put_caps[0].callback(put_caps[0].cookie, 0) == 0);
 	assert(S.npending == 1);
-	assert(puts[1].callback(puts[1].cookie, 0) == -1);
+	assert(put_caps[1].callback(put_caps[1].cookie, 0) == -1);
 	assert(S.npending == 0);
 	assert(lastblk_calls == 0);
 	assert(user_callbacks == 0);
@@ -286,9 +286,9 @@ test_async_put_failure(void)
 	assert(state_append(&S, &R, user_callback, NULL) == 0);
 	assert(nextblk_callback(nextblk_cookie) == 0);
 	assert(nputs == 3);
-	assert(puts[0].callback(puts[0].cookie, 1) == 0);
-	assert(puts[1].callback(puts[1].cookie, 0) == 0);
-	assert(puts[2].callback(puts[2].cookie, 0) == -1);
+	assert(put_caps[0].callback(put_caps[0].cookie, 1) == 0);
+	assert(put_caps[1].callback(put_caps[1].cookie, 0) == 0);
+	assert(put_caps[2].callback(put_caps[2].cookie, 0) == -1);
 	assert(S.npending == 0);
 	assert(lastblk_calls == 0);
 	assert(user_callbacks == 0);
@@ -306,8 +306,8 @@ test_lastblk_schedule_failure(void)
 	lastblk_start_fail = 1;
 	assert(state_append(&S, &R, user_callback, NULL) == 0);
 	assert(nextblk_callback(nextblk_cookie) == 0);
-	assert(puts[0].callback(puts[0].cookie, 0) == 0);
-	assert(puts[1].callback(puts[1].cookie, 0) == -1);
+	assert(put_caps[0].callback(put_caps[0].cookie, 0) == 0);
+	assert(put_caps[1].callback(put_caps[1].cookie, 0) == -1);
 	assert(lastblk_calls == 1);
 	assert(lastblk_value == 11);
 	assert(S.lastblk == 9);
@@ -327,8 +327,8 @@ test_success(void)
 	assert(state_append(&S, &R, user_callback, NULL) == 0);
 	assert(nextblk_callback(nextblk_cookie) == 0);
 	assert(nputs == 2);
-	assert(puts[0].callback(puts[0].cookie, 0) == 0);
-	assert(puts[1].callback(puts[1].cookie, 0) == 0);
+	assert(put_caps[0].callback(put_caps[0].cookie, 0) == 0);
+	assert(put_caps[1].callback(put_caps[1].cookie, 0) == 0);
 	assert(lastblk_calls == 1);
 	assert(lastblk_value == 11);
 	assert(S.lastblk == 11);
