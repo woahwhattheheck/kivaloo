@@ -108,9 +108,9 @@ pruneaddrs(struct serverpool * P)
 	if (monoclock_get(&tv))
 		goto err0;
 
-	/* Iterate through the pool. */
-	for (i = 0; i < serverpool_addrs_getsize(P->A); i++) {
-		SPA = serverpool_addrs_get(P->A, i);
+	/* Iterate backwards so swap-with-last deletion cannot skip an address. */
+	for (i = serverpool_addrs_getsize(P->A); i > 0; i--) {
+		SPA = serverpool_addrs_get(P->A, i - 1);
 
 		/*
 		 * Keep anything from the current or immediately previous
