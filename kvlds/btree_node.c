@@ -575,8 +575,10 @@ btree_node_descend(struct btree * T, struct node * N,
 			goto err1;
 	} else {
 		btree_node_lock(T, N);
-		if (!events_immediate_register(callback_descend, C, 0))
+		if (!events_immediate_register(callback_descend, C, 0)) {
+			btree_node_unlock(T, N);
 			goto err1;
+		}
 	}
 
 	/* Success! */
